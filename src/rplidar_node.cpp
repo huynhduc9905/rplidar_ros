@@ -261,6 +261,18 @@ class RPlidarNode : public rclcpp::Node
         scan_msg->ranges.resize(node_count);
         bool reverse_data = (!inverted && reversed) || (inverted && !reversed);
 
+        // Convert filter angles to radians
+        float min_angle = -110.0 * M_PI / 180.0; // -120 degrees in radians
+        float max_angle =  110.0 * M_PI / 180.0; // 120 degrees in radians
+
+        // Wrap the angle range to 0-360 degrees
+        float wrapped_min_angle = fmod((min_angle + 2 * M_PI), 2 * M_PI);
+        float wrapped_max_angle = fmod((max_angle + 2 * M_PI), 2 * M_PI);
+
+        // Calculate indices for the valid angular range
+        size_t min_index = static_cast<size_t>(wrapped_min_angle / scan_msg->angle_increment);
+        size_t max_index = static_cast<size_t>(wrapped_max_angle / scan_msg->angle_increment);
+
         size_t scan_midpoint = node_count / 2;
         for (size_t i = 0; i < node_count; i++) {
             float read_value = (float)nodes[i].dist_mm_q2 / 4.0f / 1000;
@@ -275,8 +287,9 @@ class RPlidarNode : public rclcpp::Node
                     apply_index = apply_index + scan_midpoint;
             }
 
-            if (read_value == 0.0)
+            if ((apply_index < min_index && apply_index > max_index) || read_value == 0.0) {
                 scan_msg->ranges[apply_index] = std::numeric_limits<float>::infinity();
+            }
             else
                 scan_msg->ranges[apply_index] = read_value;
             scan_msg->intensities[apply_index] = (float)(nodes[apply_index].quality >> 2);
