@@ -34,6 +34,10 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <std_msgs/msg/bool.hpp>
+
+#include <nav2_msgs/srv/clear_entire_costmap.hpp>
+
 #include <std_srvs/srv/empty.hpp>
 #include "sl_lidar.h"
 #include "math.h"
@@ -273,6 +277,30 @@ class RPlidarNode : public rclcpp::Node
         size_t min_index = static_cast<size_t>(wrapped_min_angle / scan_msg->angle_increment);
         size_t max_index = static_cast<size_t>(wrapped_max_angle / scan_msg->angle_increment);
 
+   // for slope costmap
+        float slope_min_angle = -20.0 * M_PI / 180.0; // -20 degrees in radians
+        float slope_max_angle =  20.0 * M_PI / 180.0; // 20 degrees in radians
+
+                // Wrap the angle range to 0-360 degrees
+        float slope_wrapped_min_angle = fmod((slope_min_angle + 2 * M_PI), 2 * M_PI);
+        float slope_wrapped_max_angle = fmod((slope_max_angle + 2 * M_PI), 2 * M_PI);
+
+        // Calculate indices for the valid angular range
+        size_t slope_min_index = static_cast<size_t>(slope_wrapped_min_angle / scan_msg->angle_increment);
+        size_t slope_max_index = static_cast<size_t>(slope_wrapped_max_angle / scan_msg->angle_increment);
+
+        // Log the indices
+        // RCLCPP_INFO(
+        //     this->get_logger(),
+        //     "Slope angular range indices: slope_min_index=%zu, slope_max_index=%zu",
+        //     slope_min_index, slope_max_index);
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "slope_min_index=%zu, slope_max_index=%zu, is_slope_detected=%s, reverse_data=%s, flip_X_axis=%s",
+            slope_min_index, slope_max_index,
+            is_slope ? "true" : "false", reverse_data ? "true" : "false", flip_X_axis ? "true" : "false");
+
         size_t scan_midpoint = node_count / 2;
         for (size_t i = 0; i < node_count; i++) {
             float read_value = (float)nodes[i].dist_mm_q2 / 4.0f / 1000;
@@ -290,13 +318,49 @@ class RPlidarNode : public rclcpp::Node
             if ((apply_index < min_index && apply_index > max_index) || read_value == 0.0) {
                 scan_msg->ranges[apply_index] = std::numeric_limits<float>::infinity();
             }
-            else
+            else if(((apply_index > slope_min_index) || (apply_index < slope_max_index)) && is_slope){
+                // if ((apply_index > slope_min_index || apply_index < slope_max_index)) 
+                    
+                    scan_msg->ranges[apply_index] = std::numeric_limits<float>::infinity();
+            }
+            else{
                 scan_msg->ranges[apply_index] = read_value;
+            }
             scan_msg->intensities[apply_index] = (float)(nodes[apply_index].quality >> 2);
         }
 
         pub->publish(*scan_msg);
     }
+
+    void slope_callback(const std_msgs::msg::Bool::SharedPtr msg)
+    {
+        is_slope = msg->data;
+        // Log the received message
+        RCLCPP_INFO(this->get_logger(), "Received: %s", msg->data ? "true" : "false");
+    }
+
+    // void clearGlobalCostmap()
+    // {
+    //     // Wait for the service to be available
+    //     if (!clear_costmap_client_->wait_for_service(std::chrono::seconds(5))) {
+    //         RCLCPP_ERROR(this->get_logger(), "Service /global_costmap/clear_entirely_global_costmap is not available.");
+    //         return;
+    //     }
+
+    //     // Create a request
+    //     auto request = std::make_shared<nav2_msgs::srv::ClearEntireCostmap::Request>();
+
+    //     // Send the request
+    //     auto result_future = clear_costmap_client_->async_send_request(request);
+
+    //     // Wait for the result
+    //     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) ==
+    //         rclcpp::FutureReturnCode::SUCCESS) {
+    //         RCLCPP_INFO(this->get_logger(), "Successfully called the service to clear the global costmap.");
+    //     } else {
+    //         RCLCPP_ERROR(this->get_logger(), "Failed to call the service to clear the global costmap.");
+    //     }
+    // }
 
     bool set_scan_mode() {
         sl_result     op_result;
@@ -451,6 +515,13 @@ public:
         }
 
         scan_pub = this->create_publisher<sensor_msgs::msg::LaserScan>(topic_name, rclcpp::QoS(rclcpp::KeepLast(10)));
+        slope_sub = this->create_subscription<std_msgs::msg::Bool>(
+            "/is_slope",
+            rclcpp::QoS(10),  // QoS settings
+            std::bind(&RPlidarNode::slope_callback, this, std::placeholders::_1));
+
+        // clear_costmap_client_ = this->create_client<nav2_msgs::srv::ClearEntireCostmap>("/global_costmap/clear_entirely_global_costmap");
+
 
         stop_motor_service = this->create_service<std_srvs::srv::Empty>("stop_motor",  
                                 std::bind(&RPlidarNode::stop_motor,this,std::placeholders::_1,std::placeholders::_2));
@@ -566,6 +637,7 @@ public:
 
   private:
     rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr slope_sub;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr start_motor_service;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_motor_service;
 
@@ -588,8 +660,10 @@ public:
     float scan_frequency;
     /* State */
     bool is_scanning = false;
+    bool is_slope = false;
 
     ILidarDriver *drv = nullptr;
+    // rclcpp::Client<nav2_msgs::srv::ClearEntireCostmap>::SharedPtr clear_costmap_client_; // Service client
 };
 
 void ExitHandler(int sig)
