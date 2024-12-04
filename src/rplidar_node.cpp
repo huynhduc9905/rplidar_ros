@@ -293,12 +293,6 @@ class RPlidarNode : public rclcpp::Node
         //     "Slope angular range indices: slope_min_index=%zu, slope_max_index=%zu",
         //     slope_min_index, slope_max_index);
 
-        RCLCPP_INFO(
-            this->get_logger(),
-            "slope_min_index=%zu, slope_max_index=%zu, is_slope_detected=%s, reverse_data=%s, flip_X_axis=%s",
-            slope_min_index, slope_max_index,
-            is_slope ? "true" : "false", reverse_data ? "true" : "false", flip_X_axis ? "true" : "false");
-
         size_t scan_midpoint = node_count / 2;
         for (size_t i = 0; i < node_count; i++) {
             float read_value = (float)nodes[i].dist_mm_q2 / 4.0f / 1000;
@@ -317,7 +311,6 @@ class RPlidarNode : public rclcpp::Node
                 scan_msg->ranges[apply_index] = std::numeric_limits<float>::infinity();
             }
             else if(((apply_index > slope_min_index) || (apply_index < slope_max_index)) && is_slope){
-                // if ((apply_index > slope_min_index || apply_index < slope_max_index)) 
                     
                     scan_msg->ranges[apply_index] = std::numeric_limits<float>::infinity();
             }
@@ -334,7 +327,7 @@ class RPlidarNode : public rclcpp::Node
     {
         is_slope = msg->data;
         // Log the received message
-        RCLCPP_INFO(this->get_logger(), "Received: %s", msg->data ? "true" : "false");
+        RCLCPP_INFO(this->get_logger(), "is_slope: %s", msg->data ? "true" : "false");
     }
 
     // void clearGlobalCostmap()
