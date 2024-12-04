@@ -36,8 +36,6 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <std_msgs/msg/bool.hpp>
 
-#include <nav2_msgs/srv/clear_entire_costmap.hpp>
-
 #include <std_srvs/srv/empty.hpp>
 #include "sl_lidar.h"
 #include "math.h"
