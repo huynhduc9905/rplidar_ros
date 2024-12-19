@@ -507,7 +507,7 @@ public:
 
         scan_pub = this->create_publisher<sensor_msgs::msg::LaserScan>(topic_name, rclcpp::QoS(rclcpp::KeepLast(10)));
         slope_sub = this->create_subscription<std_msgs::msg::Bool>(
-            "/is_slope",
+            "/binary_state",
             rclcpp::QoS(10),  // QoS settings
             std::bind(&RPlidarNode::slope_callback, this, std::placeholders::_1));
 
